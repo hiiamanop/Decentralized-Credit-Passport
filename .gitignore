@@ -1,0 +1,42 @@
+# OS & Editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Python (AI Service)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+.pytest_cache/
+ai-service/models/*
+!ai-service/models/.gitkeep
+
+# Node.js (Backend)
+node_modules/
+dist/
+coverage/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Rust (Smart Contract)
+target/
+**/*.rs.bk
+
+# Data & Large Files
+dataset/*
+!dataset/.gitkeep
+
+# Documentation
+docs/*
