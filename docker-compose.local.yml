@@ -1,0 +1,26 @@
+services:
+  ai-service:
+    build:
+      context: ./ai-service
+    environment:
+      - PORT=5001
+    ports:
+      - "${AI_HOST_PORT:-5002}:5001"
+    volumes:
+      - ./ai-service/models:/app/models:ro
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      - NEAR_NETWORK=testnet
+      - NEAR_RPC_URL=https://rpc.testnet.fastnear.com
+      - CONTRACT_ID=${CONTRACT_ID}
+      - ORACLE_ACCOUNT_ID=${ORACLE_ACCOUNT_ID}
+      - ORACLE_PRIVATE_KEY=${ORACLE_PRIVATE_KEY}
+      - AI_SERVICE_URL=http://ai-service:5001
+      - PORT=3000
+    ports:
+      - "${BACKEND_HOST_PORT:-3001}:3000"
+    depends_on:
+      - ai-service

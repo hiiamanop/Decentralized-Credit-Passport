@@ -1,4 +1,4 @@
-import { Account, actions } from "near-api-js";
+import { Account, actions, JsonRpcProvider } from "near-api-js";
 import type { KeyPairString } from "near-api-js";
 import dotenv from "dotenv";
 import express, { Request, Response } from "express";
@@ -7,6 +7,16 @@ import axios from "axios";
 dotenv.config();
 
 const app = express();
+app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+    if (req.method === "OPTIONS") {
+        res.status(204).end();
+        return;
+    }
+    next();
+});
 app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
@@ -33,7 +43,115 @@ function getOracleAccount(): Account {
     return new Account(ORACLE_ACCOUNT_ID, NEAR_RPC_URL, ORACLE_PRIVATE_KEY);
 }
 
+function getProvider(): JsonRpcProvider {
+    return new JsonRpcProvider({ url: NEAR_RPC_URL });
+}
+
 // --- API ROUTES ---
+
+app.get("/config", (_req: Request, res: Response) => {
+    res.json({
+        networkId: NETWORK_ID,
+        rpcUrl: NEAR_RPC_URL,
+        oracleAccountId: ORACLE_ACCOUNT_ID,
+        contractId: CONTRACT_ID,
+        aiServiceUrl: AI_SERVICE_URL,
+    });
+});
+
+app.get("/passport/summary/:accountId", async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { accountId } = req.params;
+        if (!CONTRACT_ID) {
+            res.status(500).json({ error: "CONTRACT_ID is not set" });
+            return;
+        }
+        const provider = getProvider();
+        const result = await provider.callFunction({
+            contractId: CONTRACT_ID,
+            method: "get_credit_passport_summary",
+            args: { account_id: accountId },
+        });
+        res.json({ accountId, summary: result ?? null });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || "Failed to fetch summary" });
+    }
+});
+
+app.get("/passport/public/:accountId", async (req: Request, res: Response): Promise<void> => {
+    try {
+        const { accountId } = req.params;
+        if (!CONTRACT_ID) {
+            res.status(500).json({ error: "CONTRACT_ID is not set" });
+            return;
+        }
+        const provider = getProvider();
+        const result = await provider.callFunction({
+            contractId: CONTRACT_ID,
+            method: "get_credit_passport_public",
+            args: { account_id: accountId },
+        });
+        res.json({ accountId, public: result ?? null });
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || "Failed to fetch public passport" });
+    }
+});
+
+app.post("/passport/create", async (req: Request, res: Response): Promise<void> => {
+    try {
+        if (!CONTRACT_ID) {
+            res.status(500).json({ error: "CONTRACT_ID is not set" });
+            return;
+        }
+        const oracleAccount = getOracleAccount();
+        const businessId = String(req.body?.businessId || `BIZ-${Date.now()}`);
+        const verificationHash = String(req.body?.verificationHash || `init_${Date.now()}`);
+        const outcome = await oracleAccount.signAndSendTransaction({
+            receiverId: CONTRACT_ID,
+            actions: [
+                actions.functionCall(
+                    "create_credit_passport",
+                    { business_id: businessId, verification_hash: verificationHash },
+                    BigInt("30000000000000"),
+                    BigInt(0)
+                ),
+            ],
+        });
+
+        const txHash =
+            (outcome as any)?.transaction?.hash ||
+            (outcome as any)?.transaction_outcome?.id ||
+            (outcome as any)?.transaction?.transaction?.hash;
+        const explorerUrl = txHash ? `https://testnet.nearblocks.io/txns/${txHash}` : null;
+        res.json({ success: true, businessId, verificationHash, explorerUrl });
+    } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message || "Failed to create passport" });
+    }
+});
+
+app.post("/passport/public", async (req: Request, res: Response): Promise<void> => {
+    try {
+        if (!CONTRACT_ID) {
+            res.status(500).json({ error: "CONTRACT_ID is not set" });
+            return;
+        }
+        const enabled = Boolean(req.body?.enabled);
+        const oracleAccount = getOracleAccount();
+        const outcome = await oracleAccount.signAndSendTransaction({
+            receiverId: CONTRACT_ID,
+            actions: [actions.functionCall("set_passport_public", { enabled }, BigInt("30000000000000"), BigInt(0))],
+        });
+
+        const txHash =
+            (outcome as any)?.transaction?.hash ||
+            (outcome as any)?.transaction_outcome?.id ||
+            (outcome as any)?.transaction?.transaction?.hash;
+        const explorerUrl = txHash ? `https://testnet.nearblocks.io/txns/${txHash}` : null;
+        res.json({ success: true, enabled, explorerUrl });
+    } catch (error: any) {
+        res.status(500).json({ success: false, error: error.message || "Failed to set public flag" });
+    }
+});
 
 // Endpoint untuk Frontend meminta scoring
 app.post("/calculate-score", async (req: Request, res: Response): Promise<void> => {
@@ -137,11 +255,16 @@ app.post("/calculate-score", async (req: Request, res: Response): Promise<void> 
 });
 
 app.get("/", (_req, res) => {
-    res.send("Credit Passport AI Oracle is Running!");
+    res.json({
+        status: "ok",
+        service: "credit-passport-ai-oracle",
+        routes: ["/config", "/passport/summary/:accountId", "/passport/public/:accountId", "/passport/create", "/passport/public", "/calculate-score"],
+    });
 });
 
 app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
     console.log(`Oracle Account: ${ORACLE_ACCOUNT_ID}`);
     console.log(`Contract ID: ${CONTRACT_ID}`);
+    console.log("Routes enabled: /config, /passport/*, /calculate-score");
 });
