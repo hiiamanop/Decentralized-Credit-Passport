@@ -1,8 +1,7 @@
-import { connect, KeyPair, keyStores, utils, Contract } from "near-api-js";
+import { Account, actions } from "near-api-js";
+import type { KeyPairString } from "near-api-js";
 import dotenv from "dotenv";
 import express, { Request, Response } from "express";
-import path from "path";
-import os from "os";
 import axios from "axios";
 
 dotenv.config();
@@ -14,31 +13,24 @@ const PORT = process.env.PORT || 3000;
 const AI_SERVICE_URL = process.env.AI_SERVICE_URL || "http://localhost:5000";
 
 // --- KONFIGURASI NEAR ---
-const CREDENTIALS_DIR = path.join(os.homedir(), ".near-credentials");
 const NETWORK_ID = process.env.NEAR_NETWORK || "testnet";
 const ORACLE_ACCOUNT_ID = process.env.ORACLE_ACCOUNT_ID || "";
 // Private Key Oracle (Simpan di .env untuk keamanan)
-const ORACLE_PRIVATE_KEY = process.env.ORACLE_PRIVATE_KEY || "";
+const ORACLE_PRIVATE_KEY = (process.env.ORACLE_PRIVATE_KEY || "") as KeyPairString | "";
 const CONTRACT_ID = process.env.CONTRACT_ID || "";
+const NEAR_RPC_URL =
+    process.env.NEAR_RPC_URL ||
+    process.env.NEAR_NODE_URL ||
+    (NETWORK_ID === "testnet" ? "https://rpc.testnet.fastnear.com" : `https://rpc.${NETWORK_ID}.near.org`);
 
-// --- NEAR CONNECTION ---
-async function initNear() {
-    const keyStore = new keyStores.InMemoryKeyStore();
-    // Tambahkan key oracle ke keystore
-    if (ORACLE_ACCOUNT_ID && ORACLE_PRIVATE_KEY) {
-        const keyPair = KeyPair.fromString(ORACLE_PRIVATE_KEY);
-        await keyStore.setKey(NETWORK_ID, ORACLE_ACCOUNT_ID, keyPair);
+function getOracleAccount(): Account {
+    if (!ORACLE_ACCOUNT_ID) {
+        throw new Error("ORACLE_ACCOUNT_ID is not set");
     }
-
-    const config = {
-        networkId: NETWORK_ID,
-        keyStore,
-        nodeUrl: `https://rpc.${NETWORK_ID}.near.org`,
-        walletUrl: `https://wallet.${NETWORK_ID}.near.org`,
-        helperUrl: `https://helper.${NETWORK_ID}.near.org`,
-    };
-
-    return await connect(config);
+    if (!ORACLE_PRIVATE_KEY) {
+        throw new Error("ORACLE_PRIVATE_KEY is not set");
+    }
+    return new Account(ORACLE_ACCOUNT_ID, NEAR_RPC_URL, ORACLE_PRIVATE_KEY);
 }
 
 // --- API ROUTES ---
@@ -89,30 +81,42 @@ app.post("/calculate-score", async (req: Request, res: Response): Promise<void> 
         const { credit_score, risk_level } = aiResult;
 
         // 2. Hubungkan ke NEAR
-        const near = await initNear();
-        const oracleAccount = await near.account(ORACLE_ACCOUNT_ID);
+        const oracleAccount = getOracleAccount();
 
         // 3. Panggil Smart Contract (update_credit_score)
         const verificationHash = `ai_verified_${Date.now()}_${credit_score}`;
 
         console.log("Sending transaction to NEAR blockchain...");
         
-        const outcome = await oracleAccount.functionCall({
-            contractId: CONTRACT_ID,
-            methodName: "update_credit_score",
-            args: {
-                owner_id: accountId,
-                new_score: credit_score,
-                new_risk_level: risk_level,
-                new_verification_hash: verificationHash
-            },
-            gas: BigInt("30000000000000"), // 30 Tgas
-            attachedDeposit: BigInt("0") // 0 NEAR
+        if (!CONTRACT_ID) {
+            res.status(500).json({ success: false, error: "CONTRACT_ID is not set" });
+            return;
+        }
+
+        const outcome = await oracleAccount.signAndSendTransaction({
+            receiverId: CONTRACT_ID,
+            actions: [
+                actions.functionCall(
+                    "update_credit_score",
+                    {
+                        owner_id: accountId,
+                        new_score: credit_score,
+                        new_risk_level: risk_level,
+                        new_verification_hash: verificationHash
+                    },
+                    BigInt("30000000000000"),
+                    BigInt(0)
+                )
+            ]
         });
 
         console.log("Transaction successful!");
         
-        const explorerUrl = `https://explorer.${NETWORK_ID}.near.org/transactions/${outcome.transaction.hash}`;
+        const txHash =
+            (outcome as any)?.transaction?.hash ||
+            (outcome as any)?.transaction_outcome?.id ||
+            (outcome as any)?.transaction?.transaction?.hash;
+        const explorerUrl = txHash ? `https://testnet.nearblocks.io/txns/${txHash}` : null;
 
         res.json({
             success: true,
@@ -132,7 +136,7 @@ app.post("/calculate-score", async (req: Request, res: Response): Promise<void> 
     }
 });
 
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
     res.send("Credit Passport AI Oracle is Running!");
 });
 

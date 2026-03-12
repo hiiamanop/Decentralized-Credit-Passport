@@ -27,7 +27,7 @@ def health_check():
 
 @app.route('/predict-score', methods=['POST'])
 def predict_score():
-    if not credit_model:
+    if not credit_model or not credit_encoders:
         return jsonify({"error": "Model not loaded"}), 500
 
     data = request.json
@@ -50,7 +50,7 @@ def predict_score():
         ]
         
         # Create DataFrame with ordered columns
-        df = pd.DataFrame([input_data])[expected_cols]
+        df = pd.DataFrame([data])[expected_cols]
 
         # 2. Encode Categoricals
         cat_cols = ['person_home_ownership', 'loan_intent', 'loan_grade', 'cb_person_default_on_file']
@@ -89,4 +89,4 @@ def predict_score():
         return jsonify({"error": str(e)}), 400
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=int(os.getenv("PORT", "5001")))

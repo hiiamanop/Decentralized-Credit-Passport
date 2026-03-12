@@ -1,5 +1,6 @@
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::borsh::{BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, UnorderedSet};
+use near_sdk::state::ContractState;
 use near_sdk::{env, near_bindgen, AccountId, PanicOnDefault, BorshStorageKey};
 use near_sdk::serde::{Deserialize, Serialize};
 
@@ -9,6 +10,7 @@ fn log_event(method: &str, data: String) {
 }
 
 #[derive(BorshSerialize, BorshStorageKey)]
+#[borsh(crate = "near_sdk::borsh")]
 enum StorageKey {
     Passports,
     Oracles,
@@ -16,6 +18,7 @@ enum StorageKey {
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, Debug)]
 #[serde(crate = "near_sdk::serde")]
+#[borsh(crate = "near_sdk::borsh")]
 pub struct CreditPassport {
     pub business_id: String,
     pub owner: AccountId,
@@ -26,14 +29,57 @@ pub struct CreditPassport {
     pub authorized_viewers: Vec<AccountId>,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub struct PublicCreditPassport {
+    pub business_id: String,
+    pub owner: AccountId,
+    pub credit_score: u32,
+    pub risk_level: String,
+    pub last_updated: u64,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub struct CreditPassportSummary {
+    pub business_id: String,
+    pub owner: AccountId,
+    pub last_updated: u64,
+    pub is_public: bool,
+}
+
+fn public_flag_storage_key(account_id: &AccountId) -> Vec<u8> {
+    let mut key = b"PUBLIC_PASSPORT:".to_vec();
+    key.extend_from_slice(account_id.as_bytes());
+    key
+}
+
+fn read_public_flag(account_id: &AccountId) -> bool {
+    env::storage_read(&public_flag_storage_key(account_id))
+        .as_deref()
+        .is_some_and(|v| v == [1u8])
+}
+
+fn write_public_flag(account_id: &AccountId, enabled: bool) {
+    let key = public_flag_storage_key(account_id);
+    if enabled {
+        env::storage_write(&key, &[1u8]);
+    } else {
+        env::storage_remove(&key);
+    }
+}
+
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+#[borsh(crate = "near_sdk::borsh")]
 pub struct Contract {
     // Mapping dari AccountId pemilik ke CreditPassport mereka
     passports: LookupMap<AccountId, CreditPassport>,
     // Daftar akun (oracle/backend) yang boleh mengupdate skor kredit
     authorized_oracles: UnorderedSet<AccountId>,
 }
+
+impl ContractState for Contract {}
 
 #[near_bindgen]
 impl Contract {
@@ -146,6 +192,40 @@ impl Contract {
         self.passports.contains_key(&account_id)
     }
 
+    pub fn set_passport_public(&mut self, enabled: bool) {
+        let owner = env::predecessor_account_id();
+        self.passports.get(&owner).expect("Credit Passport not found");
+        write_public_flag(&owner, enabled);
+    }
+
+    pub fn is_passport_public(&self, account_id: AccountId) -> bool {
+        read_public_flag(&account_id)
+    }
+
+    pub fn get_credit_passport_public(&self, account_id: AccountId) -> Option<PublicCreditPassport> {
+        if !read_public_flag(&account_id) {
+            return None;
+        }
+        let passport = self.passports.get(&account_id)?;
+        Some(PublicCreditPassport {
+            business_id: passport.business_id,
+            owner: passport.owner,
+            credit_score: passport.credit_score,
+            risk_level: passport.risk_level,
+            last_updated: passport.last_updated,
+        })
+    }
+
+    pub fn get_credit_passport_summary(&self, account_id: AccountId) -> Option<CreditPassportSummary> {
+        let passport = self.passports.get(&account_id)?;
+        Some(CreditPassportSummary {
+            business_id: passport.business_id,
+            owner: passport.owner,
+            last_updated: passport.last_updated,
+            is_public: read_public_flag(&account_id),
+        })
+    }
+
     // --- Admin Functions ---
 
     pub fn add_oracle(&mut self, oracle_id: AccountId) {
@@ -253,5 +333,25 @@ mod tests {
         // Random user (accounts(3)) tries to view
         testing_env!(context.predecessor_account_id(accounts(3)).build());
         contract.get_credit_passport(accounts(1));
+    }
+
+    #[test]
+    fn test_view_public_summary() {
+        let mut context = get_context(accounts(1));
+        testing_env!(context.build());
+        let mut contract = Contract::new(accounts(0));
+        contract.create_credit_passport("BIZ-123".to_string(), "hash_abc".to_string());
+
+        let public_before = contract.get_credit_passport_public(accounts(1));
+        assert!(public_before.is_none());
+
+        contract.set_passport_public(true);
+
+        let public_after = contract.get_credit_passport_public(accounts(1)).unwrap();
+        assert_eq!(public_after.business_id, "BIZ-123");
+        assert_eq!(public_after.credit_score, 0);
+
+        let summary = contract.get_credit_passport_summary(accounts(1)).unwrap();
+        assert!(summary.is_public);
     }
 }
