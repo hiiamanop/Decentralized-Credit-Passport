@@ -1,0 +1,11 @@
+{
+  "merchant_id": "umkm-001",
+  "order_id": "ORDER-123",
+  "payment_id": "PAY-123",
+  "total_paid": "250000",
+  "platform_fee": "5000",
+  "currency": "IDR",
+  "status": "PAID",
+  "paid_time": "2026-03-12T10:10:00Z",
+  "buyer_phone": "081234567890"
+}

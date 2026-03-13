@@ -2,6 +2,8 @@ services:
   ai-service:
     build:
       context: ./ai-service
+    env_file:
+      - .env.docker
     environment:
       - PORT=5001
     ports:
@@ -17,16 +19,39 @@ services:
   backend:
     build:
       context: ./backend
+    env_file:
+      - .env.docker
     environment:
       - NEAR_NETWORK=testnet
       - NEAR_RPC_URL=https://rpc.testnet.fastnear.com
-      - CONTRACT_ID=${CONTRACT_ID}
-      - ORACLE_ACCOUNT_ID=${ORACLE_ACCOUNT_ID}
-      - ORACLE_PRIVATE_KEY=${ORACLE_PRIVATE_KEY}
       - AI_SERVICE_URL=http://ai-service:5001
       - PORT=3000
+      - SKIP_ONCHAIN_UPDATE=${SKIP_ONCHAIN_UPDATE:-1}
+      - SOURCE_SECRET_QRIS=${SOURCE_SECRET_QRIS:-dev_secret}
+      - SOURCE_SECRET_MARKETPLACE=${SOURCE_SECRET_MARKETPLACE:-dev_secret}
+      - SOURCE_SECRET_EWALLET=${SOURCE_SECRET_EWALLET:-dev_secret}
+      - SOURCE_SECRET_BANK=${SOURCE_SECRET_BANK:-dev_secret}
     ports:
       - "${BACKEND_HOST_PORT:-3000}:3000"
     depends_on:
       ai-service:
         condition: service_healthy
+
+  gateway-demo:
+    image: node:20-alpine
+    profiles: ["demo"]
+    working_dir: /demo
+    env_file:
+      - .env.docker
+    environment:
+      - BASE_URL=http://backend:3000
+      - SOURCE_SECRET_QRIS=${SOURCE_SECRET_QRIS:-dev_secret}
+      - SOURCE_SECRET_MARKETPLACE=${SOURCE_SECRET_MARKETPLACE:-dev_secret}
+      - SOURCE_SECRET_EWALLET=${SOURCE_SECRET_EWALLET:-dev_secret}
+      - SOURCE_SECRET_BANK=${SOURCE_SECRET_BANK:-dev_secret}
+    volumes:
+      - ./scripts:/demo/scripts:ro
+      - ./backend/testdata:/demo/testdata:ro
+    depends_on:
+      - backend
+    command: ["node", "scripts/gateway-demo.mjs"]

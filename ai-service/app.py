@@ -3,6 +3,7 @@ import joblib
 import pandas as pd
 import numpy as np
 import os
+import math
 
 app = Flask(__name__)
 
@@ -85,6 +86,62 @@ def predict_score():
             "probability_of_default": float(prob_default)
         })
 
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+@app.route('/score-features', methods=['POST'])
+def score_features():
+    data = request.json or {}
+
+    try:
+        feature_version = data.get("feature_version", "tx_features_v1")
+        features = data.get("features", data)
+
+        monthly_revenue_mean_minor = float(features.get("monthly_revenue_mean_minor", 0))
+        revenue_stability = float(features.get("revenue_stability", 0))
+        tx_frequency_per_day = float(features.get("tx_frequency_per_day", 0))
+        avg_tx_size_minor = float(features.get("avg_tx_size_minor", 0))
+        seasonality_index = float(features.get("seasonality_index", 0))
+        cashflow_consistency = float(features.get("cashflow_consistency", 0))
+        inflow_outflow_ratio = float(features.get("inflow_outflow_ratio", 0))
+
+        mean_rev = max(0.0, monthly_revenue_mean_minor / 100.0)
+        avg_tx = max(0.0, avg_tx_size_minor / 100.0)
+        log_rev = math.log1p(mean_rev / 1_000_000.0)
+        log_avg = math.log1p(avg_tx / 100_000.0)
+
+        tx_freq_scaled = min(max(tx_frequency_per_day / 10.0, 0.0), 1.0)
+        seasonality_penalty = min(max((seasonality_index - 1.0) / 2.0, 0.0), 1.0)
+        stability = min(max(revenue_stability, 0.0), 1.0)
+        consistency = min(max(cashflow_consistency, 0.0), 1.0)
+        ratio_scaled = min(max(inflow_outflow_ratio / 3.0, 0.0), 1.0)
+
+        risk = (
+            0.65 * (1.0 - stability)
+            + 0.20 * (1.0 - consistency)
+            + 0.15 * seasonality_penalty
+            - 0.10 * tx_freq_scaled
+            - 0.10 * log_rev
+            - 0.05 * log_avg
+            - 0.05 * ratio_scaled
+        )
+        risk = min(max(risk, 0.0), 1.0)
+
+        score = int(round(1000.0 * (1.0 - risk)))
+
+        risk_category = "high"
+        if score >= 750:
+            risk_category = "low"
+        elif score >= 550:
+            risk_category = "medium"
+
+        return jsonify({
+            "credit_score": score,
+            "risk_category": risk_category,
+            "probability_of_default": float(risk),
+            "model_version": "features_v1",
+            "feature_version": feature_version
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 

@@ -1,0 +1,10 @@
+{
+  "merchant_id": "umkm-001",
+  "transaction_date": "2026-03-12",
+  "posting_date": "2026-03-12T08:30:00+07:00",
+  "amount": "-150000",
+  "currency": "IDR",
+  "description": "Transfer to Supplier ABC",
+  "reference": "BNK-REF-8899",
+  "account_number": "1234567890"
+}

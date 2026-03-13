@@ -192,6 +192,16 @@ impl Contract {
         self.passports.contains_key(&account_id)
     }
 
+    /// Verifikasi hash passport tanpa membuka data sensitif.
+    /// Mengembalikan true jika passport ada dan hash cocok.
+    pub fn verify_credit_passport(&self, account_id: AccountId, expected_verification_hash: String) -> bool {
+        let passport = match self.passports.get(&account_id) {
+            Some(p) => p,
+            None => return false,
+        };
+        passport.verification_hash == expected_verification_hash
+    }
+
     pub fn set_passport_public(&mut self, enabled: bool) {
         let owner = env::predecessor_account_id();
         self.passports.get(&owner).expect("Credit Passport not found");

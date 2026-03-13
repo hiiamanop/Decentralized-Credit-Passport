@@ -1,0 +1,9 @@
+{
+  "merchant_id": "umkm-001",
+  "trx_id": "QRIS-INV-0001",
+  "amount": "12500",
+  "currency": "IDR",
+  "status": "PAID",
+  "paid_at": "2026-03-12T12:00:00+07:00",
+  "issuer": "BANK-XYZ"
+}
