@@ -26,11 +26,6 @@ services:
       - NEAR_RPC_URL=https://rpc.testnet.fastnear.com
       - AI_SERVICE_URL=http://ai-service:5001
       - PORT=3000
-      - SKIP_ONCHAIN_UPDATE=${SKIP_ONCHAIN_UPDATE:-1}
-      - SOURCE_SECRET_QRIS=${SOURCE_SECRET_QRIS:-dev_secret}
-      - SOURCE_SECRET_MARKETPLACE=${SOURCE_SECRET_MARKETPLACE:-dev_secret}
-      - SOURCE_SECRET_EWALLET=${SOURCE_SECRET_EWALLET:-dev_secret}
-      - SOURCE_SECRET_BANK=${SOURCE_SECRET_BANK:-dev_secret}
     ports:
       - "${BACKEND_HOST_PORT:-3000}:3000"
     depends_on:
