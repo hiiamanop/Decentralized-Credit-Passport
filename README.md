@@ -1,6 +1,6 @@
 # Decentralized Credit Passport for MSMEs (NEAR + AI + Alternative Data)
 
-Prototype hackathon untuk membuat “Credit Passport” UMKM: identitas kredit digital yang dihitung dari data transaksi alternatif (QRIS, marketplace, e-wallet, bank) menggunakan AI, lalu diverifikasi dengan hash di blockchain NEAR (tanpa menaruh data sensitif on-chain).
+Prototype untuk membuat “Credit Passport” UMKM: identitas kredit digital yang dihitung dari data transaksi alternatif (QRIS, marketplace, e-wallet, bank) menggunakan AI, lalu diverifikasi dengan hash di blockchain NEAR (tanpa menaruh data sensitif on-chain).
 
 ## Ringkasan
 - **Data Integration Layer**: gateway ingest multi-sumber + normalisasi + dedupe + cleansing + validasi signature.
